@@ -6,7 +6,7 @@ using RestHW03.Configuration;
 
 namespace RestHW03.Services;
 
-public sealed class StockPriceService(HttpClient httpClient, IOptions<AlphaVantageOptions> options)
+public sealed class StockPriceService(HttpClient httpClient, IOptions<MarketstackOptions> options)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
@@ -20,54 +20,49 @@ public sealed class StockPriceService(HttpClient httpClient, IOptions<AlphaVanta
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
         var baseUrl = options.Value.BaseUrl.TrimEnd('/');
         var requestUri =
-            $"{baseUrl}/query?function=GLOBAL_QUOTE&symbol={Uri.EscapeDataString(normalizedSymbol)}&apikey={Uri.EscapeDataString(apiKey)}";
+            $"{baseUrl}/v1/eod/latest?symbols={Uri.EscapeDataString(normalizedSymbol)}&access_key={Uri.EscapeDataString(apiKey)}";
 
         using var response = await httpClient.GetAsync(requestUri, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var quote = await JsonSerializer.DeserializeAsync<AlphaVantageQuoteResponse>(responseStream, SerializerOptions, cancellationToken);
+        var quote = await JsonSerializer.DeserializeAsync<MarketstackQuoteResponse>(responseStream, SerializerOptions, cancellationToken);
 
-        if (!string.IsNullOrWhiteSpace(quote?.ErrorMessage))
+        if (quote?.Error is not null)
         {
-            throw new ArgumentException(quote.ErrorMessage);
+            throw new InvalidOperationException(quote.Error.Message);
         }
 
-        if (!string.IsNullOrWhiteSpace(quote?.Information))
-        {
-            throw new InvalidOperationException(quote.Information);
-        }
-
-        if (!string.IsNullOrWhiteSpace(quote?.Note))
-        {
-            throw new InvalidOperationException(quote.Note);
-        }
-
-        if (quote?.GlobalQuote is null || !quote.GlobalQuote.TryGetValue("05. price", out var rawPrice))
+        var item = quote?.Data?.FirstOrDefault(static x => x.Close is not null);
+        if (item?.Close is null)
         {
             throw new InvalidOperationException($"Stock provider returned no quote for {normalizedSymbol}.");
         }
 
-        if (!double.TryParse(rawPrice, NumberStyles.Float, CultureInfo.InvariantCulture, out var price))
-        {
-            throw new InvalidOperationException($"Stock provider returned an invalid price for {normalizedSymbol}.");
-        }
-
-        return price;
+        return item.Close.Value;
     }
 
-    private sealed class AlphaVantageQuoteResponse
+    private sealed class MarketstackQuoteResponse
     {
-        [JsonPropertyName("Global Quote")]
-        public Dictionary<string, string>? GlobalQuote { get; init; }
+        [JsonPropertyName("data")]
+        public List<MarketstackQuoteItem>? Data { get; init; }
 
-        [JsonPropertyName("Information")]
-        public string? Information { get; init; }
+        [JsonPropertyName("error")]
+        public MarketstackError? Error { get; init; }
+    }
 
-        [JsonPropertyName("Note")]
-        public string? Note { get; init; }
+    private sealed class MarketstackQuoteItem
+    {
+        [JsonPropertyName("symbol")]
+        public string? Symbol { get; init; }
 
-        [JsonPropertyName("Error Message")]
-        public string? ErrorMessage { get; init; }
+        [JsonPropertyName("close")]
+        public double? Close { get; init; }
+    }
+
+    private sealed class MarketstackError
+    {
+        [JsonPropertyName("message")]
+        public string Message { get; init; } = "Unknown stock provider error.";
     }
 }

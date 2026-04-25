@@ -4,5 +4,5 @@ services:
     runtime: docker
     plan: free
     envVars:
-      - key: ALPHA_VANTAGE_API_KEY
+      - key: MARKETSTACK_API_KEY
         sync: false
