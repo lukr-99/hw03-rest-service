@@ -29,7 +29,7 @@ By default it returns JSON. If the client sends `Accept: application/xml` or `Ac
 Set the stock API key with environment variable:
 
 ```bash
-MARKETSTACK_API_KEY=your-key
+YAHOO_FINANCE_RAPIDAPI_KEY=your-key
 ```
 
 The app also auto-binds to Render's `PORT` variable.

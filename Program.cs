@@ -12,7 +12,7 @@ if (!string.IsNullOrWhiteSpace(renderPort) && string.IsNullOrWhiteSpace(aspnetco
     builder.WebHost.UseUrls($"http://0.0.0.0:{renderPort}");
 }
 
-builder.Services.Configure<MarketstackOptions>(builder.Configuration.GetSection(MarketstackOptions.SectionName));
+builder.Services.Configure<YahooFinanceOptions>(builder.Configuration.GetSection(YahooFinanceOptions.SectionName));
 builder.Services.AddSingleton<ExpressionEvaluator>();
 builder.Services.AddHttpClient<AirportTemperatureService>(client =>
 {
@@ -30,7 +30,7 @@ app.MapGet("/", async Task<IResult> (
     AirportTemperatureService airportTemperatureService,
     StockPriceService stockPriceService,
     ExpressionEvaluator expressionEvaluator,
-    IOptions<MarketstackOptions> marketstackOptions,
+    IOptions<YahooFinanceOptions> yahooFinanceOptions,
     CancellationToken cancellationToken) =>
 {
     var airportCode = context.Request.Query["queryAirportTemp"].ToString();
@@ -55,7 +55,7 @@ app.MapGet("/", async Task<IResult> (
         {
             value = await stockPriceService.GetPriceAsync(
                 stockSymbol,
-                marketstackOptions.Value.GetApiKey(),
+                yahooFinanceOptions.Value,
                 cancellationToken);
         }
         else

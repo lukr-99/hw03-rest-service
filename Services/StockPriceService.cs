@@ -6,11 +6,11 @@ using RestHW03.Configuration;
 
 namespace RestHW03.Services;
 
-public sealed class StockPriceService(HttpClient httpClient, IOptions<MarketstackOptions> options)
+public sealed class StockPriceService(HttpClient httpClient)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<double> GetPriceAsync(string symbol, string apiKey, CancellationToken cancellationToken)
+    public async Task<double> GetPriceAsync(string symbol, YahooFinanceOptions options, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(symbol) || symbol.Length is < 1 or > 4 || !symbol.All(char.IsLetter))
         {
@@ -18,51 +18,47 @@ public sealed class StockPriceService(HttpClient httpClient, IOptions<Marketstac
         }
 
         var normalizedSymbol = symbol.Trim().ToUpperInvariant();
-        var baseUrl = options.Value.BaseUrl.TrimEnd('/');
+        var baseUrl = options.BaseUrl.TrimEnd('/');
         var requestUri =
-            $"{baseUrl}/v1/eod/latest?symbols={Uri.EscapeDataString(normalizedSymbol)}&access_key={Uri.EscapeDataString(apiKey)}";
+            $"{baseUrl}/market/v2/get-quotes?region=US&symbols={Uri.EscapeDataString(normalizedSymbol)}";
 
-        using var response = await httpClient.GetAsync(requestUri, cancellationToken);
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.Add("X-RapidAPI-Key", options.GetApiKey());
+        request.Headers.Add("X-RapidAPI-Host", options.Host);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var quote = await JsonSerializer.DeserializeAsync<MarketstackQuoteResponse>(responseStream, SerializerOptions, cancellationToken);
+        var quote = await JsonSerializer.DeserializeAsync<YahooFinanceQuoteResponse>(responseStream, SerializerOptions, cancellationToken);
 
-        if (quote?.Error is not null)
-        {
-            throw new InvalidOperationException(quote.Error.Message);
-        }
-
-        var item = quote?.Data?.FirstOrDefault(static x => x.Close is not null);
-        if (item?.Close is null)
+        var item = quote?.QuoteResponse?.Result?.FirstOrDefault(static x => x.RegularMarketPrice is not null);
+        if (item?.RegularMarketPrice is null)
         {
             throw new InvalidOperationException($"Stock provider returned no quote for {normalizedSymbol}.");
         }
 
-        return item.Close.Value;
+        return item.RegularMarketPrice.Value;
     }
 
-    private sealed class MarketstackQuoteResponse
+    private sealed class YahooFinanceQuoteResponse
     {
-        [JsonPropertyName("data")]
-        public List<MarketstackQuoteItem>? Data { get; init; }
-
-        [JsonPropertyName("error")]
-        public MarketstackError? Error { get; init; }
+        [JsonPropertyName("quoteResponse")]
+        public YahooFinanceQuoteEnvelope? QuoteResponse { get; init; }
     }
 
-    private sealed class MarketstackQuoteItem
+    private sealed class YahooFinanceQuoteEnvelope
+    {
+        [JsonPropertyName("result")]
+        public List<YahooFinanceQuoteItem>? Result { get; init; }
+    }
+
+    private sealed class YahooFinanceQuoteItem
     {
         [JsonPropertyName("symbol")]
         public string? Symbol { get; init; }
 
-        [JsonPropertyName("close")]
-        public double? Close { get; init; }
-    }
-
-    private sealed class MarketstackError
-    {
-        [JsonPropertyName("message")]
-        public string Message { get; init; } = "Unknown stock provider error.";
+        [JsonPropertyName("regularMarketPrice")]
+        public double? RegularMarketPrice { get; init; }
     }
 }
