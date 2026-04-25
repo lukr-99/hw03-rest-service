@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: hw03-rest-service
+    runtime: dotnet
+    plan: free
+    buildCommand: dotnet publish RestHW03.csproj -c Release -o out
+    startCommand: dotnet out/RestHW03.dll
+    envVars:
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
